@@ -1,0 +1,16 @@
+{
+  "name": "serverless-radar",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "serverless"
+  ],
+  "author": "Nadtakan Futhoem",
+  "license": "MIT",
+  "description": "An automated tracker for the AWS What's New RSS feed and filters announcements related to serverless technologies."
+}

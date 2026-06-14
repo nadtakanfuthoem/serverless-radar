@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
+    "deploy": "cd cdk && npm install && npm run deploy",
+    "destroy": "cd cdk && npm run destroy",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.200.0"
   },
   "keywords": [
     "serverless"

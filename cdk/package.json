@@ -1,0 +1,26 @@
+{
+  "name": "serverless-radar-cdk",
+  "version": "1.0.0",
+  "description": "CDK infrastructure for Serverless Radar",
+  "main": "bin/app.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "deploy": "cdk deploy",
+    "destroy": "cdk destroy",
+    "diff": "cdk diff",
+    "synth": "cdk synth"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.200.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.200.0",
+    "constructs": "^10.0.0",
+    "@aws-sdk/client-s3": "^3.0.0"
+  }
+}

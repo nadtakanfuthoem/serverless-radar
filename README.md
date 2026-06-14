@@ -53,6 +53,19 @@ const SERVERLESS_KEYWORDS = [
 ];
 ```
 
+## 🤖 AI Agent Vision
+
+Serverless Radar is being extended with AI agent capabilities powered by Amazon Bedrock, including:
+
+- **Daily digest summarization** — LLM-generated summaries instead of raw descriptions
+- **Relevance scoring** — surface only the most impactful announcements
+- **Auto-tagging** — categorize items by topic (`#compute`, `#database`, etc.)
+- **Trend detection** — identify patterns across weekly/monthly announcements
+- **Slack / Email digest** — polished newsletter delivered on a schedule
+- **Q&A over announcements** — ask natural language questions about recent AWS news
+
+See [ROADMAP.md](ROADMAP.md) for the full list of planned features.
+
 ## Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

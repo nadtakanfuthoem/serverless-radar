@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Serverless Radar</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #f97316;
+    }
+
+    header p {
+      color: #94a3b8;
+      margin-top: 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+
+    select {
+      background: #1e2330;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    select:focus { outline: none; border-color: #f97316; }
+
+    #status {
+      text-align: center;
+      color: #64748b;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 1.25rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #1e2330;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 1.25rem;
+      transition: border-color 0.2s;
+    }
+
+    .card:hover { border-color: #f97316; }
+
+    .card-date {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 0.75rem;
+      line-height: 1.4;
+    }
+
+    .card-desc {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+
+    .card-link a {
+      font-size: 0.85rem;
+      color: #f97316;
+      text-decoration: none;
+    }
+
+    .card-link a:hover { text-decoration: underline; }
+
+    .empty {
+      text-align: center;
+      color: #64748b;
+      padding: 3rem;
+      grid-column: 1 / -1;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 3rem;
+      color: #475569;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>📡 Serverless Radar</h1>
+    <p>Daily AWS serverless announcements, filtered automatically</p>
+  </header>
+
+  <div class="controls">
+    <select id="yearSelect"></select>
+    <select id="monthSelect">
+      <option value="01">January</option>
+      <option value="02">February</option>
+      <option value="03">March</option>
+      <option value="04">April</option>
+      <option value="05">May</option>
+      <option value="06">June</option>
+      <option value="07">July</option>
+      <option value="08">August</option>
+      <option value="09">September</option>
+      <option value="10">October</option>
+      <option value="11">November</option>
+      <option value="12">December</option>
+    </select>
+    <select id="daySelect"></select>
+  </div>
+
+  <div id="status">Loading...</div>
+  <div class="grid" id="grid"></div>
+
+  <footer>
+    <p>Powered by AWS Lambda &amp; S3 · Updated daily · <a href="https://github.com/nadtakanfuthoem/serverless-radar" style="color:#f97316">GitHub</a></p>
+  </footer>
+
+  <script>
+    const now = new Date();
+
+    // Populate year dropdown (current year and 2 previous years)
+    const yearSelect = document.getElementById('yearSelect');
+    for (let y = now.getUTCFullYear(); y >= now.getUTCFullYear() - 2; y--) {
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      yearSelect.appendChild(opt);
+    }
+
+    // Set default month
+    const monthSelect = document.getElementById('monthSelect');
+    monthSelect.value = String(now.getUTCMonth() + 1).padStart(2, '0');
+
+    // Populate day dropdown
+    const daySelect = document.getElementById('daySelect');
+    function populateDays() {
+      const year = yearSelect.value;
+      const month = monthSelect.value;
+      const daysInMonth = new Date(year, month, 0).getDate();
+      daySelect.innerHTML = '';
+      for (let d = 1; d <= daysInMonth; d++) {
+        const val = String(d).padStart(2, '0');
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = val;
+        daySelect.appendChild(opt);
+      }
+      daySelect.value = String(now.getUTCDate()).padStart(2, '0');
+    }
+
+    populateDays();
+
+    async function loadData() {
+      const year = yearSelect.value;
+      const month = monthSelect.value;
+      const day = daySelect.value;
+      const key = `data/${year}/${month}/${year}-${month}-${day}.json`;
+
+      document.getElementById('status').textContent = `Loading ${year}-${month}-${day}...`;
+      document.getElementById('grid').innerHTML = '';
+
+      try {
+        const res = await fetch(key);
+        if (!res.ok) throw new Error('No data found for this date');
+        const data = await res.json();
+
+        document.getElementById('status').textContent =
+          `${data.itemsFound} serverless items · Generated ${new Date(data.generatedAt).toUTCString()}`;
+
+        const grid = document.getElementById('grid');
+
+        if (data.items.length === 0) {
+          grid.innerHTML = '<div class="empty">No serverless announcements found for this date.</div>';
+          return;
+        }
+
+        data.items.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <div class="card-date">${new Date(item.pubDate).toDateString()}</div>
+            <div class="card-title">${item.title}</div>
+            <div class="card-desc">${item.description}...</div>
+            <div class="card-link"><a href="${item.link}" target="_blank" rel="noopener">Read more →</a></div>
+          `;
+          grid.appendChild(card);
+        });
+
+      } catch (err) {
+        document.getElementById('status').textContent = `No data available for this date.`;
+        document.getElementById('grid').innerHTML =
+          '<div class="empty">No data found. The Lambda may not have run yet for this date.</div>';
+      }
+    }
+
+    yearSelect.addEventListener('change', () => { populateDays(); loadData(); });
+    monthSelect.addEventListener('change', () => { populateDays(); loadData(); });
+    daySelect.addEventListener('change', loadData);
+
+    loadData();
+  </script>
+
+</body>
+</html>

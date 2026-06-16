@@ -16,6 +16,11 @@ const SERVERLESS_KEYWORDS = [
   'redshift serverless',
   'emr serverless',
   'opensearch serverless',
+  'bedrock',
+  'step functions',
+  'dynamoDB',
+  'kiro',
+  'agentcore'
 ];
 
 const ddbClient = new DynamoDBClient({});

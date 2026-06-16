@@ -5,6 +5,7 @@ import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
@@ -12,9 +13,12 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
+import { config } from 'dotenv';
 import { Construct } from 'constructs';
+
+// Load .env from project root
+config({ path: path.resolve(__dirname, '../../.env') });
 
 const DOMAIN_NAME = process.env.DOMAIN_NAME || 'example.com';
 const SUBDOMAIN = process.env.SUBDOMAIN || `serverless-radar.${DOMAIN_NAME}`;
@@ -35,36 +39,71 @@ export class ServerlessRadarStack extends cdk.Stack {
       validation: acm.CertificateValidation.fromDns(hostedZone),
     });
 
-    // S3 bucket — stores JSON data + web assets (private, served via CloudFront)
+    // S3 bucket — hosts static website only
     const bucket = new s3.Bucket(this, 'ServerlessRadarBucket', {
       bucketName: `serverless-radar-${this.account}-${this.region}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      cors: [
-        {
-          allowedMethods: [s3.HttpMethods.GET],
-          allowedOrigins: ['*'],
-          allowedHeaders: ['*'],
-        },
-      ],
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     });
 
-    // CloudFront Origin Access Identity
-    const oai = new cloudfront.OriginAccessIdentity(this, 'OAI', {
-      comment: 'Serverless Radar OAI',
+    // DynamoDB table — stores filtered RSS data
+    const table = new dynamodb.Table(this, 'ServerlessRadarTable', {
+      tableName: 'serverless-radar',
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },  // "2026#06"
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },       // link URL
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl',
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
-    bucket.grantRead(oai);
 
-    // CloudFront distribution
+    // API Lambda — reads from DynamoDB, serves JSON to the frontend
+    const apiFunction = new lambda.Function(this, 'ServerlessRadarApiFunction', {
+      functionName: 'serverless-radar-api',
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'api.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../src')),
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 128,
+      description: 'API to query serverless announcements from DynamoDB',
+      environment: {
+        TABLE_NAME: table.tableName,
+      },
+    });
+
+    table.grantReadData(apiFunction);
+
+    // Function URL for the API (public, no auth — read-only data)
+    const apiUrl = apiFunction.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,
+      cors: {
+        allowedOrigins: ['*'],
+        allowedMethods: [lambda.HttpMethod.GET],
+        allowedHeaders: ['*'],
+      },
+    });
+
+    // CloudFront Origin Access Control for S3
+    const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(bucket);
+
+    // CloudFront distribution — serves static site + proxies /api to Lambda
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       domainNames: [SUBDOMAIN],
       certificate,
       defaultRootObject: 'index.html',
       defaultBehavior: {
-        origin: new origins.S3Origin(bucket, { originAccessIdentity: oai }),
+        origin: s3Origin,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      },
+      additionalBehaviors: {
+        '/api/*': {
+          origin: new origins.FunctionUrlOrigin(apiUrl),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+        },
       },
       errorResponses: [
         {
@@ -105,11 +144,13 @@ export class ServerlessRadarStack extends cdk.Stack {
       displayName: 'Serverless Radar',
     });
 
-    topic.addSubscription(
-      new subscriptions.EmailSubscription(NOTIFICATION_EMAIL)
-    );
+    if (NOTIFICATION_EMAIL) {
+      topic.addSubscription(
+        new subscriptions.EmailSubscription(NOTIFICATION_EMAIL)
+      );
+    }
 
-    // Lambda function
+    // Fetcher Lambda — fetches RSS and saves to DynamoDB
     const radarFunction = new lambda.Function(this, 'ServerlessRadarFunction', {
       functionName: 'serverless-radar',
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -117,11 +158,10 @@ export class ServerlessRadarStack extends cdk.Stack {
       code: lambda.Code.fromAsset(path.join(__dirname, '../../src')),
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
-      description: 'Fetches AWS RSS feed and saves serverless announcements to S3',
+      description: 'Fetches AWS RSS feed and saves serverless announcements to DynamoDB',
       environment: {
-        BUCKET_NAME: bucket.bucketName,
+        TABLE_NAME: table.tableName,
         TOPIC_ARN: topic.topicArn,
-        NODE_OPTIONS: '--experimental-vm-modules',
       },
       logGroup: new logs.LogGroup(this, 'ServerlessRadarLogGroup', {
         logGroupName: '/aws/lambda/serverless-radar',
@@ -130,10 +170,10 @@ export class ServerlessRadarStack extends cdk.Stack {
       }),
     });
 
-    // Grant Lambda write access to S3
-    bucket.grantPut(radarFunction, 'data/*');
+    // Grant fetcher Lambda read+write access to DynamoDB
+    table.grantReadWriteData(radarFunction);
 
-    // Grant Lambda publish access to SNS
+    // Grant fetcher Lambda publish access to SNS
     topic.grantPublish(radarFunction);
 
     // EventBridge rule — runs twice daily at 9:00 AM and 9:00 PM UTC
@@ -157,19 +197,19 @@ export class ServerlessRadarStack extends cdk.Stack {
       description: 'Website URL',
     });
 
-    new cdk.CfnOutput(this, 'CloudFrontDomain', {
-      value: distribution.distributionDomainName,
-      description: 'CloudFront distribution domain',
+    new cdk.CfnOutput(this, 'ApiURL', {
+      value: `https://${SUBDOMAIN}/api/items`,
+      description: 'API endpoint for querying items',
     });
 
-    new cdk.CfnOutput(this, 'BucketName', {
-      value: bucket.bucketName,
-      description: 'S3 bucket name',
+    new cdk.CfnOutput(this, 'TableName', {
+      value: table.tableName,
+      description: 'DynamoDB table name',
     });
 
     new cdk.CfnOutput(this, 'LambdaFunctionName', {
       value: radarFunction.functionName,
-      description: 'Lambda function name',
+      description: 'Fetcher Lambda function name',
     });
 
     new cdk.CfnOutput(this, 'TopicArn', {

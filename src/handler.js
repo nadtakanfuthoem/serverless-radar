@@ -1,9 +1,10 @@
 import https from 'https';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 
 const FEED_URL = 'https://aws.amazon.com/new/feed/';
-const BUCKET_NAME = process.env.BUCKET_NAME;
+const TABLE_NAME = process.env.TABLE_NAME;
 const TOPIC_ARN = process.env.TOPIC_ARN;
 
 const SERVERLESS_KEYWORDS = [
@@ -16,7 +17,8 @@ const SERVERLESS_KEYWORDS = [
   'opensearch serverless',
 ];
 
-const s3 = new S3Client({});
+const ddbClient = new DynamoDBClient({});
+const ddb = DynamoDBDocumentClient.from(ddbClient);
 const sns = new SNSClient({});
 
 function fetchFeed(url) {
@@ -46,28 +48,46 @@ function extractTag(block, tag) {
   return (match?.[1] ?? match?.[2] ?? '').trim();
 }
 
-function getS3Key(date) {
+function getYearMonth(dateStr) {
+  const date = new Date(dateStr);
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `data/${year}/${month}/${year}-${month}-${day}.json`;
+  return `${year}#${month}`;
 }
 
-async function saveToS3(key, payload) {
-  await s3.send(new PutObjectCommand({
-    Bucket: BUCKET_NAME,
-    Key: key,
-    Body: JSON.stringify(payload, null, 2),
-    ContentType: 'application/json',
-    CacheControl: 'no-cache',
+async function getExistingLinks(yearMonth) {
+  const result = await ddb.send(new QueryCommand({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: 'pk = :pk',
+    ExpressionAttributeValues: { ':pk': yearMonth },
+    ProjectionExpression: 'sk',
   }));
-  console.log(`Saved to s3://${BUCKET_NAME}/${key}`);
+  return new Set((result.Items ?? []).map(item => item.sk));
+}
+
+async function saveItem(item) {
+  const yearMonth = getYearMonth(item.pubDate);
+  const ttl = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60; // 1 year
+
+  await ddb.send(new PutCommand({
+    TableName: TABLE_NAME,
+    Item: {
+      pk: yearMonth,          // partition key: "2026#06"
+      sk: item.link,          // sort key: unique link URL (prevents duplicates)
+      title: item.title,
+      pubDate: item.pubDate,
+      description: item.description,
+      savedAt: new Date().toISOString(),
+      ttl,
+    },
+    ConditionExpression: 'attribute_not_exists(sk)', // skip if already exists
+  }));
 }
 
 function buildEmailBody(items, date) {
   const header = `📡 Serverless Radar — ${date.toISOString().slice(0, 10)}\n`;
   const separator = '='.repeat(50);
-  const summary = `Found ${items.length} serverless announcement(s) today:\n`;
+  const summary = `Found ${items.length} NEW serverless announcement(s):\n`;
 
   const itemList = items.map((item, i) =>
     `${i + 1}. ${item.title}\n   ${item.pubDate}\n   ${item.link}\n`
@@ -114,26 +134,44 @@ export const handler = async () => {
 
   console.log(`Serverless-related items found: ${items.length}`);
 
-  const payload = {
-    generatedAt: now.toISOString(),
-    itemsFound: items.length,
-    items,
-  };
+  // Get existing links for the current month to detect new items
+  const currentMonth = getYearMonth(now.toISOString());
+  const existingLinks = await getExistingLinks(currentMonth);
 
-  // Save to S3
-  const s3Key = getS3Key(now);
-  await saveToS3(s3Key, payload);
+  // Save each item individually, skip duplicates
+  const newItems = [];
+  for (const item of items) {
+    if (existingLinks.has(item.link)) {
+      console.log(`Skipping duplicate: ${item.title}`);
+      continue;
+    }
 
-  // Send email notification only if items were found
-  if (items.length > 0) {
-    await sendNotification(items, now);
+    try {
+      await saveItem(item);
+      newItems.push(item);
+      console.log(`Saved: ${item.title}`);
+    } catch (err) {
+      if (err.name === 'ConditionalCheckFailedException') {
+        console.log(`Skipping duplicate: ${item.title}`);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  console.log(`New items saved: ${newItems.length}`);
+
+  // Send email only for NEW items (not previously seen)
+  if (newItems.length > 0) {
+    await sendNotification(newItems, now);
   } else {
-    console.log('No serverless items found — skipping email notification');
+    console.log('No new items — skipping email notification');
   }
 
   return {
     statusCode: 200,
-    s3Key,
-    itemsFound: items.length,
+    totalFiltered: items.length,
+    newItems: newItems.length,
+    duplicatesSkipped: items.length - newItems.length,
   };
 };

@@ -1,0 +1,49 @@
+<mxfile host="Electron">
+  <diagram name="Page-1" id="miayHvX7Z0DH3vhSUj-M">
+    <mxGraphModel dx="1557" dy="1117" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="eUP2br7ckqct-VZxKfTc-1" parent="1" style="dashed=0;outlineConnect=0;html=1;align=center;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;shape=mxgraph.webicons.rss;fillColor=#FDE532;gradientColor=#F4600D" value="" vertex="1">
+          <mxGeometry height="102.4" width="102.4" x="267.8" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="eUP2br7ckqct-VZxKfTc-9" edge="1" parent="1" source="eUP2br7ckqct-VZxKfTc-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="eUP2br7ckqct-VZxKfTc-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eUP2br7ckqct-VZxKfTc-2" parent="1" style="sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" value="" vertex="1">
+          <mxGeometry height="78" width="78" x="280" y="375" as="geometry" />
+        </mxCell>
+        <mxCell id="eUP2br7ckqct-VZxKfTc-7" edge="1" parent="1" source="eUP2br7ckqct-VZxKfTc-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="eUP2br7ckqct-VZxKfTc-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eUP2br7ckqct-VZxKfTc-4" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=#ffffff;fillColor=#232F3E;dashed=0;verticalLabelPosition=middle;verticalAlign=bottom;align=center;html=1;whiteSpace=wrap;fontSize=10;fontStyle=1;spacing=3;shape=mxgraph.aws4.productIcon;prIcon=mxgraph.aws4.cloudwatch;" value="Amazon CloudWatch" vertex="1">
+          <mxGeometry height="110" width="80" x="80" y="359" as="geometry" />
+        </mxCell>
+        <mxCell id="eUP2br7ckqct-VZxKfTc-5" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=#ffffff;fillColor=#232F3E;dashed=0;verticalLabelPosition=middle;verticalAlign=bottom;align=center;html=1;whiteSpace=wrap;fontSize=10;fontStyle=1;spacing=3;shape=mxgraph.aws4.productIcon;prIcon=mxgraph.aws4.s3;" value="Amazon S3" vertex="1">
+          <mxGeometry height="100" width="80" x="505" y="364" as="geometry" />
+        </mxCell>
+        <mxCell id="eUP2br7ckqct-VZxKfTc-13" edge="1" parent="1" source="eUP2br7ckqct-VZxKfTc-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="730" y="590.5" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eUP2br7ckqct-VZxKfTc-6" parent="1" style="outlineConnect=0;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;shape=mxgraph.aws3.dynamo_db;fillColor=#2E73B8;gradientColor=none;" value="" vertex="1">
+          <mxGeometry height="81" width="72" x="509" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="eUP2br7ckqct-VZxKfTc-8" edge="1" parent="1" source="eUP2br7ckqct-VZxKfTc-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;startArrow=classic;startFill=1;" target="eUP2br7ckqct-VZxKfTc-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eUP2br7ckqct-VZxKfTc-10" edge="1" parent="1" source="eUP2br7ckqct-VZxKfTc-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" target="eUP2br7ckqct-VZxKfTc-6">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="319" y="591" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eUP2br7ckqct-VZxKfTc-11" parent="1" style="verticalLabelPosition=bottom;aspect=fixed;html=1;shape=mxgraph.salesforce.web;fillColor=none;strokeColor=none;" value="serverless-radar" vertex="1">
+          <mxGeometry height="88.5" width="112.03" x="740" y="546.25" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

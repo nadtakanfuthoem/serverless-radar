@@ -7,10 +7,10 @@
     "build": "tsc",
     "watch": "tsc -w",
     "cdk": "cdk",
-    "deploy": "cdk deploy",
-    "destroy": "cdk destroy",
-    "diff": "cdk diff",
-    "synth": "cdk synth"
+    "deploy": "source ../.env && cdk deploy --profile $AWS_PROFILE",
+    "destroy": "source ../.env && cdk destroy --profile $AWS_PROFILE",
+    "diff": "source ../.env && cdk diff --profile $AWS_PROFILE",
+    "synth": "source ../.env && cdk synth --profile $AWS_PROFILE"
   },
   "devDependencies": {
     "aws-cdk": "^2.200.0",
@@ -21,6 +21,6 @@
   "dependencies": {
     "aws-cdk-lib": "^2.200.0",
     "constructs": "^10.0.0",
-    "@aws-sdk/client-s3": "^3.0.0"
+    "dotenv": "^16.4.0"
   }
 }

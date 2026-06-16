@@ -119,6 +119,8 @@
       color: #475569;
       font-size: 0.8rem;
     }
+
+    footer a { color: #f97316; }
   </style>
 </head>
 <body>
@@ -144,20 +146,19 @@
       <option value="11">November</option>
       <option value="12">December</option>
     </select>
-    <select id="daySelect"></select>
   </div>
 
   <div id="status">Loading...</div>
   <div class="grid" id="grid"></div>
 
   <footer>
-    <p>Powered by AWS Lambda &amp; S3 · Updated daily · <a href="https://github.com/nadtakanfuthoem/serverless-radar" style="color:#f97316">GitHub</a></p>
+    <p>Powered by AWS Lambda &amp; DynamoDB · Updated twice daily · <a href="https://github.com/your-username/serverless-radar">GitHub</a></p>
   </footer>
 
   <script>
     const now = new Date();
 
-    // Populate year dropdown (current year and 2 previous years)
+    // Populate year dropdown
     const yearSelect = document.getElementById('yearSelect');
     for (let y = now.getUTCFullYear(); y >= now.getUTCFullYear() - 2; y--) {
       const opt = document.createElement('option');
@@ -170,46 +171,25 @@
     const monthSelect = document.getElementById('monthSelect');
     monthSelect.value = String(now.getUTCMonth() + 1).padStart(2, '0');
 
-    // Populate day dropdown
-    const daySelect = document.getElementById('daySelect');
-    function populateDays() {
-      const year = yearSelect.value;
-      const month = monthSelect.value;
-      const daysInMonth = new Date(year, month, 0).getDate();
-      daySelect.innerHTML = '';
-      for (let d = 1; d <= daysInMonth; d++) {
-        const val = String(d).padStart(2, '0');
-        const opt = document.createElement('option');
-        opt.value = val;
-        opt.textContent = val;
-        daySelect.appendChild(opt);
-      }
-      daySelect.value = String(now.getUTCDate()).padStart(2, '0');
-    }
-
-    populateDays();
-
     async function loadData() {
       const year = yearSelect.value;
       const month = monthSelect.value;
-      const day = daySelect.value;
-      const key = `data/${year}/${month}/${year}-${month}-${day}.json`;
 
-      document.getElementById('status').textContent = `Loading ${year}-${month}-${day}...`;
+      document.getElementById('status').textContent = `Loading ${year}-${month}...`;
       document.getElementById('grid').innerHTML = '';
 
       try {
-        const res = await fetch(key);
-        if (!res.ok) throw new Error('No data found for this date');
+        const res = await fetch(`/api/items?year=${year}&month=${month}`);
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
         const data = await res.json();
 
         document.getElementById('status').textContent =
-          `${data.itemsFound} serverless items · Generated ${new Date(data.generatedAt).toUTCString()}`;
+          `${data.itemsFound} serverless announcements in ${year}-${month}`;
 
         const grid = document.getElementById('grid');
 
         if (data.items.length === 0) {
-          grid.innerHTML = '<div class="empty">No serverless announcements found for this date.</div>';
+          grid.innerHTML = '<div class="empty">No serverless announcements found for this month.</div>';
           return;
         }
 
@@ -226,15 +206,14 @@
         });
 
       } catch (err) {
-        document.getElementById('status').textContent = `No data available for this date.`;
+        document.getElementById('status').textContent = 'Failed to load data.';
         document.getElementById('grid').innerHTML =
-          '<div class="empty">No data found. The Lambda may not have run yet for this date.</div>';
+          `<div class="empty">Error: ${err.message}</div>`;
       }
     }
 
-    yearSelect.addEventListener('change', () => { populateDays(); loadData(); });
-    monthSelect.addEventListener('change', () => { populateDays(); loadData(); });
-    daySelect.addEventListener('change', loadData);
+    yearSelect.addEventListener('change', loadData);
+    monthSelect.addEventListener('change', loadData);
 
     loadData();
   </script>

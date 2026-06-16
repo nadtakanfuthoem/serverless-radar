@@ -1,8 +1,10 @@
 import https from 'https';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 
 const FEED_URL = 'https://aws.amazon.com/new/feed/';
 const BUCKET_NAME = process.env.BUCKET_NAME;
+const TOPIC_ARN = process.env.TOPIC_ARN;
 
 const SERVERLESS_KEYWORDS = [
   'serverless',
@@ -15,6 +17,7 @@ const SERVERLESS_KEYWORDS = [
 ];
 
 const s3 = new S3Client({});
+const sns = new SNSClient({});
 
 function fetchFeed(url) {
   return new Promise((resolve, reject) => {
@@ -61,6 +64,30 @@ async function saveToS3(key, payload) {
   console.log(`Saved to s3://${BUCKET_NAME}/${key}`);
 }
 
+function buildEmailBody(items, date) {
+  const header = `📡 Serverless Radar — ${date.toISOString().slice(0, 10)}\n`;
+  const separator = '='.repeat(50);
+  const summary = `Found ${items.length} serverless announcement(s) today:\n`;
+
+  const itemList = items.map((item, i) =>
+    `${i + 1}. ${item.title}\n   ${item.pubDate}\n   ${item.link}\n`
+  ).join('\n');
+
+  return `${header}${separator}\n\n${summary}\n${itemList}\n${separator}\n\nVisit your Serverless Radar dashboard for details.`;
+}
+
+async function sendNotification(items, date) {
+  const subject = `📡 Serverless Radar: ${items.length} new item(s) — ${date.toISOString().slice(0, 10)}`;
+  const message = buildEmailBody(items, date);
+
+  await sns.send(new PublishCommand({
+    TopicArn: TOPIC_ARN,
+    Subject: subject,
+    Message: message,
+  }));
+  console.log('Email notification sent');
+}
+
 export const handler = async () => {
   console.log('Fetching AWS RSS feed...');
 
@@ -93,8 +120,16 @@ export const handler = async () => {
     items,
   };
 
+  // Save to S3
   const s3Key = getS3Key(now);
   await saveToS3(s3Key, payload);
+
+  // Send email notification only if items were found
+  if (items.length > 0) {
+    await sendNotification(items, now);
+  } else {
+    console.log('No serverless items found — skipping email notification');
+  }
 
   return {
     statusCode: 200,

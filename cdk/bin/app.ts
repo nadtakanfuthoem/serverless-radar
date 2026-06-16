@@ -8,7 +8,7 @@ const app = new cdk.App();
 new ServerlessRadarStack(app, 'ServerlessRadarStack', {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION,
+    region: 'us-east-1',
   },
   description: 'Serverless Radar — AWS RSS feed tracker for serverless announcements',
 });

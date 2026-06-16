@@ -12,6 +12,8 @@ An automated tracker for the AWS What's New RSS feed that filters announcements 
 ## Requirements
 
 - Node.js 18+
+- AWS account with CDK bootstrapped
+- Route 53 hosted zone (for custom domain)
 
 ## Getting Started
 
@@ -20,8 +22,25 @@ An automated tracker for the AWS What's New RSS feed that filters announcements 
 git clone https://github.com/your-username/serverless-radar.git
 cd serverless-radar
 
-# Run
+# Run locally
 npm start
+```
+
+## Deploy to AWS
+
+```bash
+# Copy and fill in your config
+cp .env.example .env
+
+# Set environment variables
+export DOMAIN_NAME=yourdomain.com
+export SUBDOMAIN=serverless-radar.yourdomain.com
+export NOTIFICATION_EMAIL=you@example.com
+
+# Deploy (add --profile your-profile if needed)
+cd cdk && npm install
+cdk bootstrap
+cdk deploy --profile your-profile
 ```
 
 ## Example Output

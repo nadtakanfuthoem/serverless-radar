@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "deploy": "cd cdk && npm install && npm run deploy",
-    "destroy": "cd cdk && npm run destroy",
+    "deploy": "cd cdk && npm install && npm run cdk -- deploy",
+    "destroy": "cd cdk && npm run cdk -- destroy",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "devDependencies": {

@@ -1,4 +1,5 @@
 import https from 'https';
+import http from 'http';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
@@ -22,10 +23,14 @@ const ddb = DynamoDBDocumentClient.from(ddbClient);
 const sns = new SNSClient({});
 
 function fetchFeed(url) {
+  const client = url.startsWith('https') ? https : http;
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+    client.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
-        return fetchFeed(res.headers.location).then(resolve).catch(reject);
+        const location = res.headers.location;
+        if (!location) return reject(new Error('Redirect with no location header'));
+        const redirectUrl = location.startsWith('http') ? location : new URL(location, url).href;
+        return fetchFeed(redirectUrl).then(resolve).catch(reject);
       }
       if (res.statusCode !== 200) {
         return reject(new Error(`HTTP ${res.statusCode}`));
@@ -127,8 +132,15 @@ export const handler = async () => {
       pubDate: extractTag(block, 'pubDate'),
       link: extractTag(block, 'link'),
       description: extractTag(block, 'description')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
         .replace(/<[^>]+>/g, '')
         .replace(/\s+/g, ' ')
+        .trim()
         .slice(0, 300),
     }));
 

@@ -106,6 +106,46 @@
 
     .card-link a:hover { text-decoration: underline; }
 
+    .analysis {
+      margin-bottom: 1rem;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+    }
+
+    .analysis summary {
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: #f97316;
+      font-weight: 500;
+    }
+
+    .analysis-content {
+      margin-top: 0.75rem;
+      font-size: 0.82rem;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+
+    .analysis-content p {
+      margin-bottom: 0.4rem;
+    }
+
+    .tags {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }
+
+    .tag {
+      background: #2d3748;
+      color: #e2e8f0;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+    }
+
     .empty {
       text-align: center;
       color: #64748b;
@@ -222,7 +262,7 @@
       document.getElementById('grid').innerHTML = '';
 
       try {
-        let url = `/api/items?year=${year}&month=${month}&limit=10`;
+        let url = `/api/items?year=${year}&month=${month}&limit=12`;
         if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
 
         const res = await fetch(url);
@@ -243,10 +283,27 @@
         data.items.forEach(item => {
           const card = document.createElement('div');
           card.className = 'card';
+
+          let analysisHtml = '';
+          if (item.analysis) {
+            analysisHtml = `
+              <details class="analysis">
+                <summary>🤖 AI Analysis (Impact: ${item.analysis.impactScore}/10)</summary>
+                <div class="analysis-content">
+                  <p><strong>Summary:</strong> ${item.analysis.summary}</p>
+                  <p><strong>Who benefits:</strong> ${item.analysis.whoBenefits}</p>
+                  <p><strong>Why it matters:</strong> ${item.analysis.whyItMatters}</p>
+                  <div class="tags">${(item.analysis.tags || []).map(t => `<span class="tag">${t}</span>`).join('')}</div>
+                </div>
+              </details>
+            `;
+          }
+
           card.innerHTML = `
             <div class="card-date">${new Date(item.pubDate).toDateString()}</div>
             <div class="card-title">${item.title}</div>
             <div class="card-desc">${item.description}...</div>
+            ${analysisHtml}
             <div class="card-link"><a href="${item.link}" target="_blank" rel="noopener">Read more →</a></div>
           `;
           grid.appendChild(card);

@@ -72,6 +72,18 @@ const SERVERLESS_KEYWORDS = [
 ];
 ```
 
+## 🤖 AI-Powered Analysis
+
+Each new announcement is automatically analyzed by Amazon Bedrock (Claude 3 Haiku) at ingestion time. The analysis includes:
+
+- **Summary** — 2-3 sentence plain-English explanation
+- **Who benefits** — target audience for the announcement
+- **Why it matters** — relevance for serverless developers
+- **Impact score** — 1-10 rating of significance
+- **Tags** — auto-categorized (compute, database, security, etc.)
+
+Analysis is stored in DynamoDB alongside each item and displayed as a collapsible section on the frontend. Cost is ~$0.09/month for ~10 items/day.
+
 ## 🤖 AI Agent Vision
 
 Serverless Radar is being extended with AI agent capabilities powered by Amazon Bedrock, including:

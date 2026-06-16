@@ -1,12 +1,14 @@
 import https from 'https';
 import http from 'http';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
+import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 
 const FEED_URL = 'https://aws.amazon.com/new/feed/';
 const TABLE_NAME = process.env.TABLE_NAME;
 const TOPIC_ARN = process.env.TOPIC_ARN;
+const BEDROCK_MODEL_ID = process.env.BEDROCK_MODEL_ID || 'amazon.nova-lite-v1:0';
 
 const SERVERLESS_KEYWORDS = [
   'serverless',
@@ -14,18 +16,22 @@ const SERVERLESS_KEYWORDS = [
   'fargate',
   'aurora serverless',
   'redshift serverless',
-  'emr serverless',
   'opensearch serverless',
   'bedrock',
   'step functions',
   'dynamoDB',
   'kiro',
-  'agentcore'
+  'agentcore',
+  'api gateway',
+  'sqs',
+  'sns',
+  'cognito'
 ];
 
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient);
 const sns = new SNSClient({});
+const bedrock = new BedrockRuntimeClient({});
 
 function fetchFeed(url) {
   const client = url.startsWith('https') ? https : http;
@@ -75,22 +81,76 @@ async function getExistingLinks(yearMonth) {
   return new Set((result.Items ?? []).map(item => item.sk));
 }
 
-async function saveItem(item) {
+async function analyzeWithAI(item) {
+  const prompt = `You are an AWS serverless expert. Analyze this AWS announcement and provide a brief analysis.
+
+Title: ${item.title}
+Description: ${item.description}
+
+Respond in JSON format only:
+{
+  "summary": "2-3 sentence summary of what this announcement means",
+  "whoBenefits": "Who benefits most from this (1 sentence)",
+  "whyItMatters": "Why this matters for serverless developers (1-2 sentences)",
+  "impactScore": 7,
+  "tags": ["serverless", "compute"]
+}
+
+impactScore should be 1-10 (10 = extremely impactful for serverless community).
+tags should be 2-4 relevant categories from: compute, database, networking, security, ai-ml, storage, monitoring, cost, developer-tools, containers.`;
+
+  try {
+    const response = await bedrock.send(new InvokeModelCommand({
+      modelId: BEDROCK_MODEL_ID,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: [{ text: prompt }] }],
+        inferenceConfig: {
+          maxTokens: 500,
+        },
+      }),
+    }));
+
+    const result = JSON.parse(new TextDecoder().decode(response.body));
+    const text = result.output?.message?.content?.[0]?.text
+      || result.content?.[0]?.text
+      || '';
+
+    // Extract JSON from response (handle cases where model wraps in markdown)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    return null;
+  } catch (err) {
+    console.error(`AI analysis failed for: ${item.title}`, err.message);
+    return null;
+  }
+}
+
+async function saveItem(item, analysis) {
   const yearMonth = getYearMonth(item.pubDate);
   const ttl = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60; // 1 year
 
+  const dbItem = {
+    pk: yearMonth,
+    sk: item.link,
+    title: item.title,
+    pubDate: item.pubDate,
+    description: item.description,
+    savedAt: new Date().toISOString(),
+    ttl,
+  };
+
+  if (analysis) {
+    dbItem.analysis = analysis;
+  }
+
   await ddb.send(new PutCommand({
     TableName: TABLE_NAME,
-    Item: {
-      pk: yearMonth,          // partition key: "2026#06"
-      sk: item.link,          // sort key: unique link URL (prevents duplicates)
-      title: item.title,
-      pubDate: item.pubDate,
-      description: item.description,
-      savedAt: new Date().toISOString(),
-      ttl,
-    },
-    ConditionExpression: 'attribute_not_exists(sk)', // skip if already exists
+    Item: dbItem,
+    ConditionExpression: 'attribute_not_exists(sk)',
   }));
 }
 
@@ -164,9 +224,13 @@ export const handler = async () => {
     }
 
     try {
-      await saveItem(item);
-      newItems.push(item);
-      console.log(`Saved: ${item.title}`);
+      // Generate AI analysis for new items
+      console.log(`Analyzing: ${item.title}`);
+      const analysis = await analyzeWithAI(item);
+
+      await saveItem(item, analysis);
+      newItems.push({ ...item, analysis });
+      console.log(`Saved with analysis: ${item.title}`);
     } catch (err) {
       if (err.name === 'ConditionalCheckFailedException') {
         console.log(`Skipping duplicate: ${item.title}`);

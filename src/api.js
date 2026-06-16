@@ -54,6 +54,7 @@ export const handler = async (event) => {
       .replace(/\s+/g, ' ')
       .trim(),
     savedAt: item.savedAt,
+    analysis: item.analysis || null,
   }));
 
   // Encode the next cursor if there are more results

@@ -16,7 +16,7 @@ This document outlines ideas and planned features for Serverless Radar, includin
 
 ## 🤖 AI Agent Ideas
 
-### 1. AI-Powered Summarization
+### 1. AI-Powered Summarization ✅ DONE
 Integrate Amazon Bedrock (Claude) to generate a concise daily digest from filtered RSS items. Instead of raw descriptions, produce a human-readable summary like:
 
 > *"Today's top serverless highlights: Lambda adds managed instances in new regions, MWAA Serverless now supports EventBridge notifications, and ECS Fargate expands to 32 vCPU tasks."*
@@ -25,14 +25,14 @@ Integrate Amazon Bedrock (Claude) to generate a concise daily digest from filter
 
 ---
 
-### 2. Relevance Scoring
+### 2. Relevance Scoring ✅ DONE
 Ask an AI agent to score each announcement from 1–10 based on its impact for serverless developers. Only surface the most important items above a configurable threshold.
 
 **Services:** Amazon Bedrock
 
 ---
 
-### 3. Auto-Categorization & Tagging
+### 3. Auto-Categorization & Tagging ✅ DONE
 Let the agent automatically tag each announcement by topic, e.g. `#compute`, `#database`, `#security`, `#pricing`, `#networking`. Enables filtering and grouping by category.
 
 **Services:** Amazon Bedrock

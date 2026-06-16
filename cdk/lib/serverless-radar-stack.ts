@@ -150,18 +150,19 @@ export class ServerlessRadarStack extends cdk.Stack {
       );
     }
 
-    // Fetcher Lambda — fetches RSS and saves to DynamoDB
+    // Fetcher Lambda — fetches RSS, analyzes with AI, and saves to DynamoDB
     const radarFunction = new lambda.Function(this, 'ServerlessRadarFunction', {
       functionName: 'serverless-radar',
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'handler.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../src')),
-      timeout: cdk.Duration.seconds(30),
+      timeout: cdk.Duration.minutes(5),
       memorySize: 256,
-      description: 'Fetches AWS RSS feed and saves serverless announcements to DynamoDB',
+      description: 'Fetches AWS RSS feed, analyzes with AI, and saves to DynamoDB',
       environment: {
         TABLE_NAME: table.tableName,
         TOPIC_ARN: topic.topicArn,
+        BEDROCK_MODEL_ID: 'amazon.nova-lite-v1:0',
       },
       logGroup: new logs.LogGroup(this, 'ServerlessRadarLogGroup', {
         logGroupName: '/aws/lambda/serverless-radar',
@@ -175,6 +176,12 @@ export class ServerlessRadarStack extends cdk.Stack {
 
     // Grant fetcher Lambda publish access to SNS
     topic.grantPublish(radarFunction);
+
+    // Grant fetcher Lambda access to Bedrock
+    radarFunction.addToRolePolicy(new cdk.aws_iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: ['arn:aws:bedrock:*::foundation-model/*'],
+    }));
 
     // EventBridge rule — runs twice daily at 9:00 AM and 9:00 PM UTC
     const schedule = new events.Rule(this, 'ServerlessRadarSchedule', {

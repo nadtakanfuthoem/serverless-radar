@@ -93,11 +93,13 @@ Respond in JSON format only:
   "whoBenefits": "Who benefits most from this (1 sentence)",
   "whyItMatters": "Why this matters for serverless developers (1-2 sentences)",
   "impactScore": 7,
-  "tags": ["serverless", "compute"]
+  "tags": ["serverless", "compute"],
+  "thoughtQuestion": "A thought-provoking question for the reader to reflect on how this could affect their architecture or workflow"
 }
 
 impactScore should be 1-10 (10 = extremely impactful for serverless community).
-tags should be 2-4 relevant categories from: compute, database, networking, security, ai-ml, storage, monitoring, cost, developer-tools, containers.`;
+tags should be 2-4 relevant categories from: compute, database, networking, security, ai-ml, storage, monitoring, cost, developer-tools, containers.
+thoughtQuestion should challenge the reader to think about implications, trade-offs, or opportunities — something they can discuss with their team.`;
 
   try {
     const response = await bedrock.send(new InvokeModelCommand({

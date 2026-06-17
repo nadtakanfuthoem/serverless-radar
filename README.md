@@ -19,7 +19,7 @@ An automated tracker for the AWS What's New RSS feed that filters announcements 
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-username/serverless-radar.git
+git clone https://github.com/nadtakanfuthoem/serverless-radar.git
 cd serverless-radar
 
 # Run locally
@@ -103,4 +103,4 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for gu
 
 ## License
 
-MIT © [Nadtakan Futhoem](https://github.com/your-username)
+MIT © [Nadtakan Futhoem](https://github.com/nadtakanfuthoem)

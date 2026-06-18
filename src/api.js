@@ -2,7 +2,6 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
 const TABLE_NAME = process.env.TABLE_NAME;
-const DEFAULT_PAGE_SIZE = 10;
 
 const ddbClient = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(ddbClient);
@@ -11,56 +10,53 @@ export const handler = async (event) => {
   const params = event.queryStringParameters || {};
   const year = params.year || new Date().getUTCFullYear().toString();
   const month = (params.month || String(new Date().getUTCMonth() + 1)).padStart(2, '0');
-  const limit = Math.min(parseInt(params.limit) || DEFAULT_PAGE_SIZE, 50);
-  const cursor = params.cursor || null; // base64-encoded lastEvaluatedKey
+  const page = Math.max(parseInt(params.page) || 1, 1);
+  const pageSize = Math.min(parseInt(params.pageSize) || 12, 50);
 
   const pk = `${year}#${month}`;
 
-  const queryParams = {
-    TableName: TABLE_NAME,
-    KeyConditionExpression: 'pk = :pk',
-    ExpressionAttributeValues: { ':pk': pk },
-    ScanIndexForward: false, // newest first
-    Limit: limit,
-  };
+  // Fetch all items for the month (typically <100 items, safe to fetch all)
+  let allItems = [];
+  let lastKey = undefined;
 
-  // If cursor is provided, decode it and use as ExclusiveStartKey
-  if (cursor) {
-    try {
-      queryParams.ExclusiveStartKey = JSON.parse(Buffer.from(cursor, 'base64').toString());
-    } catch (e) {
-      return {
-        statusCode: 400,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ error: 'Invalid cursor' }),
-      };
-    }
-  }
+  do {
+    const result = await ddb.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'pk = :pk',
+      ExpressionAttributeValues: { ':pk': pk },
+      ExclusiveStartKey: lastKey,
+    }));
 
-  const result = await ddb.send(new QueryCommand(queryParams));
+    allItems.push(...(result.Items ?? []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey);
 
-  const items = (result.Items ?? []).map(item => ({
-    title: item.title,
-    pubDate: item.pubDate,
-    link: item.sk,
-    description: (item.description || '')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&nbsp;/g, ' ')
-      .replace(/<[^>]+>/g, '')
-      .replace(/\s+/g, ' ')
-      .trim(),
-    savedAt: item.savedAt,
-    analysis: item.analysis || null,
-  }));
+  // Sort by pubDate newest first
+  const sorted = allItems
+    .map(item => ({
+      title: item.title,
+      pubDate: item.pubDate,
+      link: item.sk,
+      description: (item.description || '')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+      savedAt: item.savedAt,
+      analysis: item.analysis || null,
+    }))
+    .sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
 
-  // Encode the next cursor if there are more results
-  const nextCursor = result.LastEvaluatedKey
-    ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64')
-    : null;
+  // Paginate
+  const totalItems = sorted.length;
+  const totalPages = Math.ceil(totalItems / pageSize);
+  const startIndex = (page - 1) * pageSize;
+  const items = sorted.slice(startIndex, startIndex + pageSize);
 
   return {
     statusCode: 200,
@@ -71,10 +67,12 @@ export const handler = async (event) => {
     },
     body: JSON.stringify({
       month: pk,
-      itemsFound: items.length,
+      totalItems,
+      totalPages,
+      currentPage: page,
+      pageSize,
+      hasMore: page < totalPages,
       items,
-      nextCursor,
-      hasMore: !!nextCursor,
     }),
   };
 };

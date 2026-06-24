@@ -198,6 +198,37 @@ export class ServerlessRadarStack extends cdk.Stack {
 
     schedule.addTarget(new targets.LambdaFunction(radarFunction));
 
+    // Training Lambda — fetches AWS Training & Certification blog
+    const trainingFunction = new lambda.Function(this, 'TrainingRadarFunction', {
+      functionName: 'serverless-radar-training',
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'training-handler.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../src')),
+      timeout: cdk.Duration.minutes(2),
+      memorySize: 256,
+      description: 'Fetches AWS Training & Certification blog and saves to DynamoDB',
+      environment: {
+        TABLE_NAME: table.tableName,
+      },
+    });
+
+    table.grantReadWriteData(trainingFunction);
+
+    // Training schedule — runs twice daily at 9:30 AM and 9:30 PM UTC
+    const trainingSchedule = new events.Rule(this, 'TrainingRadarSchedule', {
+      ruleName: 'serverless-radar-training-daily',
+      description: 'Triggers Training Radar Lambda twice daily',
+      schedule: events.Schedule.cron({
+        minute: '30',
+        hour: '9,21',
+        day: '*',
+        month: '*',
+        year: '*',
+      }),
+    });
+
+    trainingSchedule.addTarget(new targets.LambdaFunction(trainingFunction));
+
     // Outputs
     new cdk.CfnOutput(this, 'WebsiteURL', {
       value: `https://${SUBDOMAIN}`,

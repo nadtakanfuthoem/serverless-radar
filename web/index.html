@@ -171,6 +171,7 @@
       display: flex;
       gap: 1rem;
       align-items: center;
+      flex-wrap: wrap;
     }
 
     .card-actions a,
@@ -182,6 +183,8 @@
       border: none;
       cursor: pointer;
       padding: 0;
+      word-break: break-all;
+      overflow-wrap: break-word;
     }
 
     .card-actions a:hover,
@@ -376,6 +379,10 @@
   </header>
 
   <div class="controls">
+    <select id="sourceSelect">
+      <option value="announcements">📢 Announcements</option>
+      <option value="training">🎓 Training & Courses</option>
+    </select>
     <select id="yearSelect"></select>
     <select id="monthSelect">
       <option value="01">January</option>
@@ -406,7 +413,7 @@
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal" id="modal">
       <button class="modal-close" id="modalClose">&times;</button>
-      <h2>🤖 AI Analysis</h2>
+      <h2 id="modalHeading">🤖 AI Analysis</h2>
       <div class="modal-title" id="modalTitle"></div>
       <div class="modal-score" id="modalScore"></div>
       <div id="modalBody"></div>
@@ -451,6 +458,7 @@
     // Modal logic
     function openModal(item) {
       const a = item.analysis;
+      document.getElementById('modalHeading').textContent = '🤖 AI Analysis';
       document.getElementById('modalTitle').textContent = item.title;
       document.getElementById('modalScore').textContent = `Impact: ${a.impactScore}/10`;
 
@@ -490,6 +498,31 @@
       document.getElementById('modalOverlay').classList.remove('active');
     }
 
+    function openCoursesModal(item) {
+      document.getElementById('modalHeading').textContent = '🎓 Course Links';
+      document.getElementById('modalTitle').textContent = item.title;
+      document.getElementById('modalScore').textContent = `${item.skillbuilderLinks.length} course${item.skillbuilderLinks.length > 1 ? 's' : ''}`;
+
+      const linksHtml = item.skillbuilderLinks.map((link, i) => {
+        // Extract a readable name from the URL path
+        const parts = link.split('/');
+        const name = (parts[parts.length - 2] || parts[parts.length - 1] || 'Course')
+          .replace(/-/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+        return `
+          <div class="modal-section" style="margin-bottom: 0.75rem;">
+            <a href="${link}" target="_blank" rel="noopener" style="color: var(--accent); font-size: 0.9rem; text-decoration: none; word-break: break-all;">
+              🎓 ${name}
+            </a>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; word-break: break-all;">${link}</p>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('modalBody').innerHTML = linksHtml;
+      document.getElementById('modalOverlay').classList.add('active');
+    }
+
     document.getElementById('modalClose').addEventListener('click', closeModal);
     document.getElementById('modalOverlay').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) closeModal();
@@ -501,12 +534,13 @@
     async function loadData() {
       const year = yearSelect.value;
       const month = monthSelect.value;
+      const source = document.getElementById('sourceSelect').value;
 
       document.getElementById('status').textContent = `Loading...`;
       document.getElementById('grid').innerHTML = '';
 
       try {
-        const url = `/api/items?year=${year}&month=${month}&page=${currentPage}&pageSize=12`;
+        const url = `/api/items?year=${year}&month=${month}&page=${currentPage}&pageSize=12&source=${source}`;
 
         const res = await fetch(url);
         if (!res.ok) throw new Error(`API error: ${res.status}`);
@@ -531,6 +565,11 @@
             ? `<button onclick='openModal(${JSON.stringify(item).replace(/'/g, "&#39;")})'>🤖 AI Analysis</button>`
             : `<button disabled>No analysis</button>`;
 
+          let skillbuilderHtml = '';
+          if (item.skillbuilderLinks && item.skillbuilderLinks.length > 0) {
+            skillbuilderHtml = `<button onclick='openCoursesModal(${JSON.stringify(item).replace(/'/g, "&#39;")})'>🎓 View ${item.skillbuilderLinks.length} Course${item.skillbuilderLinks.length > 1 ? 's' : ''}</button>`;
+          }
+
           card.innerHTML = `
             <div class="card-date">${new Date(item.pubDate).toDateString()}</div>
             <div class="card-title">${item.title}</div>
@@ -538,6 +577,7 @@
             <div class="card-actions">
               <a href="${item.link}" target="_blank" rel="noopener">Read more →</a>
               ${analysisBtn}
+              ${skillbuilderHtml}
             </div>
           `;
           grid.appendChild(card);
@@ -581,6 +621,7 @@
 
     yearSelect.addEventListener('change', resetPagination);
     monthSelect.addEventListener('change', resetPagination);
+    document.getElementById('sourceSelect').addEventListener('change', resetPagination);
 
     loadData();
   </script>

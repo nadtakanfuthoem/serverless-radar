@@ -12,9 +12,9 @@ export const handler = async (event) => {
   const month = (params.month || String(new Date().getUTCMonth() + 1)).padStart(2, '0');
   const page = Math.max(parseInt(params.page) || 1, 1);
   const pageSize = Math.min(parseInt(params.pageSize) || 12, 50);
-  const source = params.source || 'announcements'; // "announcements" or "training"
+  const source = params.source || 'news'; // "news", "architecture", "compute", "training"
 
-  const prefix = source === 'training' ? 'training#' : '';
+  const prefix = source === 'news' ? '' : `${source}#`;
   const pk = `${prefix}${year}#${month}`;
 
   // Fetch all items for the month (typically <100 items, safe to fetch all)

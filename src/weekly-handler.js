@@ -30,6 +30,33 @@ function yearMonthOf(date) {
   return `${year}#${month}`;
 }
 
+// Friday = 5 in JS getUTCDay() (Sun=0). The weekly post is anchored to this.
+const ANCHOR_WEEKDAY = 5; // Friday
+const ANCHOR_HOUR_UTC = 12; // 12:00 UTC — matches the EventBridge schedule
+
+/**
+ * Snaps a timestamp back to the most recent Friday 12:00:00 UTC that is at or
+ * before `ref`. This anchors the weekly window to the schedule (Friday noon)
+ * instead of the exact Lambda invocation time, so boundaries are reproducible
+ * regardless of trigger jitter or manual/off-day invocations.
+ *
+ * Examples (UTC):
+ *   ref = Fri 12:00:03  -> Fri 12:00:00 (same day)
+ *   ref = Fri 11:59:00  -> previous Fri 12:00:00
+ *   ref = Tue 09:00:00  -> previous Fri 12:00:00
+ */
+function anchorToFridayNoon(ref) {
+  const d = new Date(Date.UTC(
+    ref.getUTCFullYear(), ref.getUTCMonth(), ref.getUTCDate(),
+    ANCHOR_HOUR_UTC, 0, 0, 0,
+  ));
+  // Step back day-by-day until we land on a Friday that is <= ref.
+  while (d.getUTCDay() !== ANCHOR_WEEKDAY || d.getTime() > ref.getTime()) {
+    d.setUTCDate(d.getUTCDate() - 1);
+  }
+  return d;
+}
+
 /**
  * Collect the set of month partitions (YYYY#MM) that overlap the window
  * [since, now]. A 7-day window can straddle a month boundary, so we query
@@ -293,7 +320,9 @@ async function sendPublishNotification(article, devto, itemCount, weekStart, wee
 }
 
 export const handler = async () => {
-  const now = new Date();
+  // Anchor the window end to the scheduled Friday 12:00 UTC (not the exact
+  // invocation time), then look back exactly 7 days to the previous Friday noon.
+  const now = anchorToFridayNoon(new Date());
   const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   console.log(`Building weekly summary for ${since.toISOString()} .. ${now.toISOString()}`);
 

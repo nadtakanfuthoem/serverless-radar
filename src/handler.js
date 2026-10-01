@@ -133,7 +133,6 @@ thoughtQuestion should challenge the reader to think about implications, trade-o
 async function saveItem(item, analysis, source) {
   const yearMonth = getYearMonth(item.pubDate);
   const pk = source === 'news' ? yearMonth : `${source}#${yearMonth}`;
-  const ttl = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
 
   const dbItem = {
     pk,
@@ -142,7 +141,6 @@ async function saveItem(item, analysis, source) {
     pubDate: item.pubDate,
     description: item.description,
     savedAt: new Date().toISOString(),
-    ttl,
   };
 
   if (analysis) {

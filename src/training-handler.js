@@ -82,7 +82,6 @@ async function getExistingLinks(yearMonth) {
 
 async function saveItem(item) {
   const yearMonth = getYearMonth(item.pubDate);
-  const ttl = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
 
   const dbItem = {
     pk: `training#${yearMonth}`,
@@ -92,7 +91,6 @@ async function saveItem(item) {
     description: item.description,
     skillbuilderLinks: item.skillbuilderLinks || [],
     savedAt: new Date().toISOString(),
-    ttl,
   };
 
   await ddb.send(new PutCommand({

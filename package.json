@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "deploy": "cd cdk && npm install && npm run cdk -- deploy",
+    "deploy": "cd cdk && npm install && AWS_PROFILE=dev-nadtakan npm run cdk -- deploy",
     "destroy": "cd cdk && npm run cdk -- destroy",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

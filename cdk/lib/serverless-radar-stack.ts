@@ -8,6 +8,7 @@ import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
@@ -53,7 +54,6 @@ export class ServerlessRadarStack extends cdk.Stack {
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },  // "2026#06"
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },       // link URL
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      timeToLiveAttribute: 'ttl',
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
@@ -229,6 +229,64 @@ export class ServerlessRadarStack extends cdk.Stack {
 
     trainingSchedule.addTarget(new targets.LambdaFunction(trainingFunction));
 
+    // Secret holding the dev.to API key. The value is NOT managed by CDK —
+    // populate it out-of-band (console or CLI) so the key never lives in
+    // source control or the CloudFormation template.
+    const devtoSecret = new secretsmanager.Secret(this, 'DevToApiKeySecret', {
+      secretName: 'serverless-radar/devto-api-key',
+      description: 'dev.to API key used to publish the weekly summary draft',
+    });
+
+    // Weekly Lambda — summarizes the last 7 days and publishes a dev.to draft
+    const weeklyFunction = new lambda.Function(this, 'WeeklyRadarFunction', {
+      functionName: 'serverless-radar-weekly',
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'weekly-handler.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../src')),
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 256,
+      description: 'Summarizes the week of serverless announcements and publishes a dev.to draft',
+      environment: {
+        TABLE_NAME: table.tableName,
+        BEDROCK_MODEL_ID: 'amazon.nova-lite-v1:0',
+        DEVTO_SECRET_ARN: devtoSecret.secretArn,
+        TOPIC_ARN: topic.topicArn,
+      },
+      logGroup: new logs.LogGroup(this, 'WeeklyRadarLogGroup', {
+        logGroupName: '/aws/lambda/serverless-radar-weekly',
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      }),
+    });
+
+    // Grant weekly Lambda read+write access to DynamoDB (read items, write summary)
+    table.grantReadWriteData(weeklyFunction);
+
+    // Grant weekly Lambda read access to the dev.to API key secret
+    devtoSecret.grantRead(weeklyFunction);
+
+    // Grant weekly Lambda publish access to SNS (email notification on publish)
+    topic.grantPublish(weeklyFunction);
+
+    // Grant weekly Lambda access to Bedrock
+    weeklyFunction.addToRolePolicy(new cdk.aws_iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: ['arn:aws:bedrock:*::foundation-model/*'],
+    }));
+
+    // Weekly schedule — runs every Friday at 12:00 PM UTC
+    const weeklySchedule = new events.Rule(this, 'WeeklyRadarSchedule', {
+      ruleName: 'serverless-radar-weekly',
+      description: 'Triggers the weekly summary Lambda every Friday at 12:00 PM UTC',
+      schedule: events.Schedule.cron({
+        minute: '0',
+        hour: '12',
+        weekDay: 'FRI',
+      }),
+    });
+
+    weeklySchedule.addTarget(new targets.LambdaFunction(weeklyFunction));
+
     // Outputs
     new cdk.CfnOutput(this, 'WebsiteURL', {
       value: `https://${SUBDOMAIN}`,
@@ -253,6 +311,16 @@ export class ServerlessRadarStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'TopicArn', {
       value: topic.topicArn,
       description: 'SNS topic ARN for notifications',
+    });
+
+    new cdk.CfnOutput(this, 'WeeklyFunctionName', {
+      value: weeklyFunction.functionName,
+      description: 'Weekly summary Lambda function name',
+    });
+
+    new cdk.CfnOutput(this, 'DevToSecretName', {
+      value: devtoSecret.secretName,
+      description: 'Secrets Manager secret to populate with your dev.to API key',
     });
   }
 }

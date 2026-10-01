@@ -10,6 +10,7 @@ This document outlines ideas and planned features for Serverless Radar, includin
 - Filter by serverless-related keywords
 - Log results to CloudWatch via AWS Lambda
 - Scheduled daily runs via EventBridge
+- Weekly AI-generated summary published as a dev.to draft
 - Deployed with AWS CDK
 
 ---
@@ -52,6 +53,15 @@ Feed the agent a week or month's worth of announcements and ask it to identify p
 Use an AI agent to write a polished newsletter-style message from the filtered and summarized items, then deliver it automatically via Slack or email on a schedule.
 
 **Services:** Amazon Bedrock, Amazon SES, Slack API
+
+---
+
+### 7. Weekly dev.to Digest ✅ DONE
+Every Friday, a scheduled Lambda reads the last 7 days of stored announcements (news, architecture, and compute feeds), asks Amazon Bedrock to write a newsletter-style roundup article, and publishes it to dev.to as a **draft** (never auto-published). The resulting article link is stored back in DynamoDB using single-table design (`pk = summary#weekly#YYYY#MM`), so each week's post is tracked alongside the announcements it summarizes.
+
+The dev.to API key is stored in AWS Secrets Manager and read at runtime — it never lives in source control or the CloudFormation template.
+
+**Services:** Amazon Bedrock, Amazon DynamoDB, AWS Secrets Manager, Amazon EventBridge, dev.to API
 
 ---
 

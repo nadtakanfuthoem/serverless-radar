@@ -81,6 +81,24 @@ Store filtered announcements in a vector store and let users ask natural languag
 
 ---
 
+### 8. MCP Server Over the Announcement Data
+Expose the stored announcements (and weekly summaries) in DynamoDB as [Model Context Protocol](https://modelcontextprotocol.io) tools, so any MCP-aware AI client (Kiro, Claude Desktop, Cursor, etc.) can query the data in natural language and reason over it — e.g. *"What high-impact Lambda news shipped last week?"* or *"Compare this month's serverless themes to last month and draft a post."*
+
+MCP is a standard **interface** (how an AI calls tools), not new storage — the DynamoDB table already does the querying. The existing `api.js` read Lambda is essentially the same read logic; an MCP server wraps it in the standard protocol so AI clients can auto-discover and call it without bespoke per-integration glue.
+
+**Proposed tools:** `list_announcements` (by month + source, paginated), `get_announcement` (by link), `search_announcements` (keyword / date range / min impact score), `get_weekly_summaries` (the published dev.to digests), optional `get_trends` (counts by tag/source over a window).
+
+Two implementation options:
+
+- **Option A — Local stdio MCP server (recommended first step).** A small Node server (official `@modelcontextprotocol/sdk` + `@aws-sdk/client-dynamodb`) that runs locally, uses your AWS credentials, and connects to an MCP client over stdio. Fast to build, easy to test, no new infrastructure. Best way to prove out the tools before investing in hosting.
+- **Option B — Hosted / remote MCP server.** Run the server in AWS (e.g. a Lambda behind an AgentCore Gateway or an HTTP MCP endpoint) so it's reachable by anyone with auth, not just your local machine. More powerful and shareable, but adds infrastructure, authentication, and cost. A natural promotion once Option A proves useful.
+
+**How this relates to the vector store (#6):** MCP and a vector database are complementary, not alternatives. MCP is the delivery interface; a vector DB is a storage/search engine for *semantic* similarity. Start with MCP over the existing DynamoDB for precise, structured queries (month, source, impact, tags). If fuzzy meaning-based search becomes valuable, add a vector store *behind* the same MCP server and expose it as an extra `semantic_search` tool — the AI client doesn't need to change.
+
+**Services:** Model Context Protocol SDK, Amazon DynamoDB; (Option B adds) AWS Lambda, Amazon Bedrock AgentCore Gateway / API Gateway
+
+---
+
 ## 🚀 Suggested Starting Point
 
 The highest-value, lowest-complexity combination to implement first:

@@ -124,9 +124,8 @@ async function collectWeeklyItems(now, since) {
 /** Asks Bedrock to turn the week's items into a dev.to-ready article. */
 async function generateArticle(items, weekStart, weekEnd) {
   const itemLines = items.map((it, i) => {
-    const impact = it.analysis?.impactScore != null ? ` [impact ${it.analysis.impactScore}/10]` : '';
     const summary = it.analysis?.summary ? ` — ${it.analysis.summary}` : ` — ${it.description}`;
-    return `${i + 1}. (${it.source}) ${it.title}${impact}${summary}\n   Link: ${it.link}`;
+    return `${i + 1}. (${it.source}) ${it.title}${summary}\n   Read more: ${it.link}`;
   }).join('\n');
 
   const range = `${weekStart.toISOString().slice(0, 10)} to ${weekEnd.toISOString().slice(0, 10)}`;
@@ -137,17 +136,18 @@ async function generateArticle(items, weekStart, weekEnd) {
   // that are immune to whatever control characters appear in the body.
   const prompt = `You are an AWS serverless expert writing a weekly roundup blog post for dev.to.
 
-Below are the AWS serverless-related announcements from the week of ${range}. Write an engaging, well-structured article in Markdown that summarizes the week's highlights for serverless developers.
+Below are ALL ${items.length} AWS serverless-related announcements from the week of ${range}. Write an engaging, well-structured article in Markdown that summarizes them for serverless developers.
 
 Announcements:
 ${itemLines}
 
 Requirements:
+- Cover EVERY announcement in the list above — do not skip any. Each one must be summarized somewhere in the article.
 - Open with a short intro paragraph setting the theme for the week.
-- Group related announcements and explain why they matter for serverless developers.
-- Reference the original announcements with Markdown links using the provided URLs.
+- Group related announcements under H2 (##) section headings and explain why they matter for serverless developers.
+- Reference each announcement with a descriptive Markdown link (e.g. link the announcement's name or a "Read more" phrase), never a bare pasted URL.
 - Close with a brief "What this means" takeaway.
-- Use a friendly, professional tone. Use H2 (##) section headings.
+- Use a friendly, professional tone.
 
 Respond in EXACTLY this format, with no extra commentary before or after:
 TITLE: <an engaging article title, max 100 chars, on one line>
@@ -163,7 +163,7 @@ Everything after the "BODY:" line is the article body.`;
     accept: 'application/json',
     body: JSON.stringify({
       messages: [{ role: 'user', content: [{ text: prompt }] }],
-      inferenceConfig: { maxTokens: 3000 },
+      inferenceConfig: { maxTokens: 5000 },
     }),
   }));
 
@@ -207,6 +207,57 @@ function parseArticle(raw) {
     body_markdown: body,
     tags: tags.length ? tags : ['serverless', 'aws'],
   };
+}
+
+// Friendly headings for each feed source in the New Releases section.
+const SOURCE_LABELS = {
+  news: "What's New",
+  architecture: 'Architecture Blog',
+  compute: 'Compute Blog',
+};
+
+/**
+ * Builds the "New Releases" Markdown section from the in-window items that the
+ * AI did NOT already link in its article prose. This keeps the completeness
+ * guarantee (every item appears either in the prose or here) while avoiding
+ * duplicate links. Items are grouped by source, newest first.
+ *
+ * Returns '' when every item was already covered in the prose, so the section
+ * is omitted entirely.
+ */
+function buildReleasesSection(items, weekStart, weekEnd, articleBody = '') {
+  // Only include items whose link does not already appear in the article body.
+  const remaining = items.filter(it => it.link && !articleBody.includes(it.link));
+  if (remaining.length === 0) return '';
+
+  const range = `${weekStart.toISOString().slice(0, 10)} – ${weekEnd.toISOString().slice(0, 10)}`;
+  const lines = ['', '---', '', '## 📦 New Releases This Week', '', `*Additional announcement(s) from ${range} (UTC) not covered above:*`, ''];
+
+  // Stable source order; include only sources that have remaining items.
+  const order = ['news', 'architecture', 'compute'];
+  const bySource = new Map(order.map(s => [s, []]));
+  for (const it of remaining) {
+    if (!bySource.has(it.source)) bySource.set(it.source, []);
+    bySource.get(it.source).push(it);
+  }
+
+  for (const source of bySource.keys()) {
+    const group = bySource.get(source);
+    if (!group.length) continue;
+
+    // Newest first within the group.
+    group.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+
+    const label = SOURCE_LABELS[source] || source;
+    lines.push(`### ${label}`, '');
+    for (const it of group) {
+      const title = (it.title || 'Untitled').replace(/\s+/g, ' ').trim();
+      lines.push(`- [${title}](${it.link})`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd();
 }
 
 async function getDevToApiKey() {
@@ -319,12 +370,53 @@ async function sendPublishNotification(article, devto, itemCount, weekStart, wee
   console.log('Publish notification email sent');
 }
 
-export const handler = async () => {
-  // Anchor the window end to the scheduled Friday 12:00 UTC (not the exact
-  // invocation time), then look back exactly 7 days to the previous Friday noon.
+/**
+ * Resolves the [since, now] window to summarize.
+ *
+ * Default (no event / scheduled run): the window END is anchored to the most
+ * recent Friday 12:00 UTC and START is exactly 7 days earlier.
+ *
+ * Overrides (for re-running a specific past week) via the Lambda event:
+ *   { "weekEnd": "2026-10-02T12:00:00Z" }
+ *       -> uses that instant as the window end, 7 days back for the start.
+ *   { "since": "2026-09-25T12:00:00Z", "until": "2026-10-02T12:00:00Z" }
+ *       -> uses an explicit custom window (any length).
+ */
+function resolveWindow(event = {}) {
+  const parse = (v, label) => {
+    const d = new Date(v);
+    if (isNaN(d.getTime())) throw new Error(`Invalid ${label} in event: "${v}"`);
+    return d;
+  };
+
+  if (event.since || event.until) {
+    if (!event.since || !event.until) {
+      throw new Error('Provide BOTH "since" and "until" for a custom window, or neither.');
+    }
+    const since = parse(event.since, 'since');
+    const now = parse(event.until, 'until');
+    if (since >= now) throw new Error('"since" must be before "until".');
+    return { since, now, overridden: true };
+  }
+
+  if (event.weekEnd) {
+    const now = parse(event.weekEnd, 'weekEnd');
+    const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return { since, now, overridden: true };
+  }
+
+  // Default: anchor to Friday noon UTC, 7-day lookback.
   const now = anchorToFridayNoon(new Date());
   const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  console.log(`Building weekly summary for ${since.toISOString()} .. ${now.toISOString()}`);
+  return { since, now, overridden: false };
+}
+
+export const handler = async (event = {}) => {
+  const { since, now, overridden } = resolveWindow(event);
+  console.log(
+    `Building weekly summary for ${since.toISOString()} .. ${now.toISOString()}` +
+    (overridden ? ' (window overridden via event)' : ' (default Friday-noon window)')
+  );
 
   const items = await collectWeeklyItems(now, since);
   console.log(`Collected ${items.length} item(s) from the last 7 days`);
@@ -342,6 +434,13 @@ export const handler = async () => {
   const rangeLabel = `${since.toLocaleDateString('en-US', dateFmt)} – ${now.toLocaleDateString('en-US', dateFmt)}`;
   const rangeLine = `*📅 Covering AWS announcements from **${rangeLabel}** (UTC).*`;
   article.body_markdown = `${rangeLine}\n\n${article.body_markdown.trimStart()}`;
+
+  // Append a "New Releases" section listing any in-window items the AI did not
+  // already link in its prose, so every item is covered without duplicate links.
+  const releases = buildReleasesSection(items, since, now, article.body_markdown);
+  if (releases) {
+    article.body_markdown = `${article.body_markdown.trimEnd()}\n\n${releases}`;
+  }
 
   // Append an AI-generated disclaimer so every published post discloses that
   // it was written automatically by an Amazon Bedrock model.

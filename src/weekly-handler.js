@@ -30,31 +30,41 @@ function yearMonthOf(date) {
   return `${year}#${month}`;
 }
 
-// Friday = 5 in JS getUTCDay() (Sun=0). The weekly post is anchored to this.
-const ANCHOR_WEEKDAY = 5; // Friday
-const ANCHOR_HOUR_UTC = 12; // 12:00 UTC — matches the EventBridge schedule
+// Friday = 5 in JS getUTCDay() (Sun=0). Weeks end on the scheduled Friday.
+const WEEK_END_WEEKDAY = 5; // Friday
+
+/** Start of the given UTC day (00:00:00.000). */
+function startOfUtcDay(d) {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+}
+
+/** End of the given UTC day (23:59:59.999). */
+function endOfUtcDay(d) {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
+}
 
 /**
- * Snaps a timestamp back to the most recent Friday 12:00:00 UTC that is at or
- * before `ref`. This anchors the weekly window to the schedule (Friday noon)
- * instead of the exact Lambda invocation time, so boundaries are reproducible
- * regardless of trigger jitter or manual/off-day invocations.
+ * Computes a whole-UTC-day calendar week that ENDS on the most recent Friday at
+ * or before `ref`, covering 7 full days: the week runs from Saturday 00:00:00.000
+ * through Friday 23:59:59.999 UTC.
  *
- * Examples (UTC):
- *   ref = Fri 12:00:03  -> Fri 12:00:00 (same day)
- *   ref = Fri 11:59:00  -> previous Fri 12:00:00
- *   ref = Tue 09:00:00  -> previous Fri 12:00:00
+ * Because each week ends at 23:59:59.999 of its last day and the next week starts
+ * at 00:00:00.000 of the following day, consecutive weeks share NO instant and NO
+ * calendar day — eliminating the overlap.
+ *
+ * Returns { since, now } where `since` is the week's first instant and `now` is
+ * its last instant.
  */
-function anchorToFridayNoon(ref) {
-  const d = new Date(Date.UTC(
-    ref.getUTCFullYear(), ref.getUTCMonth(), ref.getUTCDate(),
-    ANCHOR_HOUR_UTC, 0, 0, 0,
-  ));
-  // Step back day-by-day until we land on a Friday that is <= ref.
-  while (d.getUTCDay() !== ANCHOR_WEEKDAY || d.getTime() > ref.getTime()) {
-    d.setUTCDate(d.getUTCDate() - 1);
+function calendarWeekEndingFriday(ref) {
+  // Walk back to the most recent Friday (by date) at or before ref.
+  const end = startOfUtcDay(ref);
+  while (end.getUTCDay() !== WEEK_END_WEEKDAY) {
+    end.setUTCDate(end.getUTCDate() - 1);
   }
-  return d;
+  const weekEnd = endOfUtcDay(end);                 // Friday 23:59:59.999
+  const start = startOfUtcDay(end);
+  start.setUTCDate(start.getUTCDate() - 6);         // back to Saturday 00:00:00.000
+  return { since: start, now: weekEnd };
 }
 
 /**
@@ -371,16 +381,19 @@ async function sendPublishNotification(article, devto, itemCount, weekStart, wee
 }
 
 /**
- * Resolves the [since, now] window to summarize.
+ * Resolves the [since, now] window to summarize, as whole-UTC-day calendar
+ * weeks that never overlap (each week ends at 23:59:59.999 of its last day).
  *
- * Default (no event / scheduled run): the window END is anchored to the most
- * recent Friday 12:00 UTC and START is exactly 7 days earlier.
+ * Default (no event / scheduled run): the 7-day calendar week ending on the
+ * most recent Friday — Saturday 00:00:00 through Friday 23:59:59.999 UTC.
  *
  * Overrides (for re-running a specific past week) via the Lambda event:
- *   { "weekEnd": "2026-10-02T12:00:00Z" }
- *       -> uses that instant as the window end, 7 days back for the start.
- *   { "since": "2026-09-25T12:00:00Z", "until": "2026-10-02T12:00:00Z" }
- *       -> uses an explicit custom window (any length).
+ *   { "weekEnd": "2026-10-02" }
+ *       -> the 7-day calendar week ending on that Friday (snapped to the most
+ *          recent Friday at/before the given date).
+ *   { "since": "2026-09-26", "until": "2026-10-02" }
+ *       -> an explicit window snapped to whole days: start-of-day(since)
+ *          through end-of-day(until).
  */
 function resolveWindow(event = {}) {
   const parse = (v, label) => {
@@ -393,21 +406,20 @@ function resolveWindow(event = {}) {
     if (!event.since || !event.until) {
       throw new Error('Provide BOTH "since" and "until" for a custom window, or neither.');
     }
-    const since = parse(event.since, 'since');
-    const now = parse(event.until, 'until');
+    const since = startOfUtcDay(parse(event.since, 'since'));
+    const now = endOfUtcDay(parse(event.until, 'until'));
     if (since >= now) throw new Error('"since" must be before "until".');
     return { since, now, overridden: true };
   }
 
   if (event.weekEnd) {
-    const now = parse(event.weekEnd, 'weekEnd');
-    const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const { since, now } = calendarWeekEndingFriday(parse(event.weekEnd, 'weekEnd'));
     return { since, now, overridden: true };
   }
 
-  // Default: anchor to Friday noon UTC, 7-day lookback.
-  const now = anchorToFridayNoon(new Date());
-  const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  // Default: the calendar week (Sat 00:00 .. Fri 23:59:59.999 UTC) ending on
+  // the most recent Friday.
+  const { since, now } = calendarWeekEndingFriday(new Date());
   return { since, now, overridden: false };
 }
 
@@ -415,11 +427,11 @@ export const handler = async (event = {}) => {
   const { since, now, overridden } = resolveWindow(event);
   console.log(
     `Building weekly summary for ${since.toISOString()} .. ${now.toISOString()}` +
-    (overridden ? ' (window overridden via event)' : ' (default Friday-noon window)')
+    (overridden ? ' (window overridden via event)' : ' (default calendar week)')
   );
 
   const items = await collectWeeklyItems(now, since);
-  console.log(`Collected ${items.length} item(s) from the last 7 days`);
+  console.log(`Collected ${items.length} item(s) in the window`);
 
   if (items.length === 0) {
     console.log('No items this week — skipping article generation');
@@ -430,8 +442,11 @@ export const handler = async (event = {}) => {
   console.log(`Generated article: "${article.title}" (tags: ${article.tags.join(', ')})`);
 
   // Prepend the covered date range so every post states the window it summarizes.
-  const dateFmt = { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' };
-  const rangeLabel = `${since.toLocaleDateString('en-US', dateFmt)} – ${now.toLocaleDateString('en-US', dateFmt)}`;
+  const dateFmt = {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'UTC',
+  };
+  const rangeLabel = `${since.toLocaleString('en-US', dateFmt)} – ${now.toLocaleString('en-US', dateFmt)}`;
   const rangeLine = `*📅 Covering AWS announcements from **${rangeLabel}** (UTC).*`;
   article.body_markdown = `${rangeLine}\n\n${article.body_markdown.trimStart()}`;
 
